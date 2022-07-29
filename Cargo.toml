@@ -1,0 +1,25 @@
+[package]
+name = "everythingdoer"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+open        = "*"
+stopwatch   = "*"
+num-bigint  = "*"
+num-integer = "*"
+crossterm   = "*"
+winapi      = {version = "*", features = ["winuser"]}
+winit       = "*"
+trayicon    = {version = "*", features = ["winit"]}
+winconsole  = {version = "*", features = ["window"]}
+grep-cli    = "*"
+serialport  = "*"
+#serial2     = "*"
+clap        = "*"
+termcolor   = "*"
+const-zero  = "*"
+rand        = "*"
+windows     = {version = "*", features = ["Win32_Graphics_Gdi", "Win32_Foundation"]}

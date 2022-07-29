@@ -1,0 +1,7 @@
+﻿  Compiling CUDA source file kernel.cu...
+  
+  C:\Users\Roman\Desktop\everythingdoer\src\external\CudaFactorial>"C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v11.6\bin\nvcc.exe" -gencode=arch=compute_52,code=\"sm_52,compute_52\" --use-local-env -ccbin "C:\Program Files\Microsoft Visual Studio\2022\Preview\VC\Tools\MSVC\14.32.31114\bin\HostX64\x64" -x cu   -I"C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v11.6\include" -I"C:\Users\Roman\scoop\apps\vcpkg\current\installed\x64-windows\include" -I"C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v11.6\include"     --keep-dir x64\Release  -maxrregcount=0  --machine 64 --compile -cudart static    -DWIN32 -DWIN64 -DNDEBUG -D_CONSOLE -D_MBCS -Xcompiler "/EHsc /W3 /nologo /O2 /Fdx64\Release\vc143.pdb /FS   /MD " -o C:\Users\Roman\Desktop\everythingdoer\src\external\CudaFactorial\x64\Release\kernel.cu.obj "C:\Users\Roman\Desktop\everythingdoer\src\external\CudaFactorial\kernel.cu" 
+  kernel.cu
+     Creating library C:\Users\Roman\Desktop\everythingdoer\src\external\CudaFactorial\x64\Release\CudaFactorial.lib and object C:\Users\Roman\Desktop\everythingdoer\src\external\CudaFactorial\x64\Release\CudaFactorial.exp
+  LINK : /LTCG specified but no code generation required; remove /LTCG from the link command line to improve linker performance
+  CudaFactorial.vcxproj -> C:\Users\Roman\Desktop\everythingdoer\src\external\CudaFactorial\x64\Release\CudaFactorial.exe
