@@ -49,12 +49,13 @@ enum Events {
     //CudaFactorial,
     Factorial,
     SerialEnum, SerialTestComms,
+    SerialQueryStatus, SerialIMURecalibrate,
     SerialAutoRotateMonitor,
     SerialRotateMonitor(Orientation),
     SerialPortChanged(usize),
 
     HideConsole, RefreshMenu,
-    Exit, None
+    Exit//, None
 }
 
 const FACTORIAL_THREAD_COUNT: u64 = 32;
@@ -66,7 +67,7 @@ const AUTOROTATE_THRESHOLD_DEG: u8 = 65;
 
 const SYN: u8 = 0x16;
 const ACK: u8 = 0x06;
-//const NAK: u8 = 0x15;
+const NAK: u8 = 0x15;
 const ENQ: u8 = 0x05;
 const DC1: u8 = 0x11;
 const DC2: u8 = 0x12;
@@ -115,6 +116,8 @@ fn main() {
                 let mut ret = MenuBuilder::new()
                     .item("Print serial ports", Events::SerialEnum)
                     .item("Test comms with selected port", Events::SerialTestComms)
+                    .item("Query selected port", Events::SerialQueryStatus)
+                    .item("Recalibrate selected port's IMU", Events::SerialIMURecalibrate)
                     .submenu("Monitor", unsafe {
                         let mut d = DISPLAY_DEVICEA::default();
                         d.cb = mem::size_of::<DISPLAY_DEVICEA>() as u32;
@@ -193,70 +196,72 @@ fn main() {
     let mut stdout_t = StandardStream::stdout(ColorChoice::Always);
     //let proxy_t = event_loop.create_proxy();
     thread::spawn(move || loop {
-        let mut tray_lock = tray_icon_t.lock().unwrap();
-        if let Some(v) = tray_lock.get_menu_item_checkable(Events::SerialAutoRotateMonitor) {
-            if v {
-                if let Some(ref mut port) = *serial_port_t.lock().unwrap() {
-                    /*{
-                        let mut stdoutl = io::stdout().lock();
-                        writeln!(stdoutl, "ok");
-                        stdoutl.flush().unwrap();
-                    }*/
-                    match port.bytes_to_read() {
-                        Ok(n) => if n > 0 {
-                            let mut buffer = [0u8];
-                            port.read_exact(&mut buffer).unwrap();
-    
+        {
+            let mut tray_lock = tray_icon_t.lock().unwrap();
+            if let Some(v) = tray_lock.get_menu_item_checkable(Events::SerialAutoRotateMonitor) {
+                if v {
+                    if let Some(ref mut port) = *serial_port_t.lock().unwrap() {
+                        /*{
                             let mut stdoutl = io::stdout().lock();
-                            let (ori, str) = match buffer[0] {
-                                DC1 => (Orientation::Landscape,        "DC1"),
-                                DC2 => (Orientation::Portrait,         "DC2"),
-                                DC3 => (Orientation::LandscapeFlipped, "DC3"),
-                                DC4 => (Orientation::PortraitFlipped,  "DC4"),
-                                _ => (Orientation::Landscape, "\0")
-                            };
-                            if str != "\0" {
-                                clr_write!(stdout_t, (Cyan, true), stdoutl, "Received ");
-                                clr_write!(stdout_t, (Magenta, true), stdoutl, "{str}");
-                                clr_write!(stdout_t, (Cyan, true), stdoutl, " (");
-                                clr_write!(stdout_t, (Magenta, true), stdoutl, "{ori:?}");
-                                clr_write!(stdout_t, (Cyan, true), stdoutl, "), sending ");
-                                clr_write!(stdout_t, (Magenta, true), stdoutl, "ACK");
-                                clr_write!(stdout_t, (Cyan, true), stdoutl, "... ");
-                            
-                                stdoutl.flush().unwrap();
-                            
-                                if let Err(e) = port.write(&[ACK]) {
-                                    clr_write!(stdout_t, (Red, true), stdoutl, "ERRT: Couldn't write - ");
-                                    clr_write!(stdout_t, Red, stdoutl, "{}", e.to_string());
-                                } else {
-                                    if let Err(e) = port.flush() {
-                                        clr_write!(stdout_t, (Red, true), stdoutl, "ERRT: Couldn't flush - ");
+                            writeln!(stdoutl, "ok");
+                            stdoutl.flush().unwrap();
+                        }*/
+                        match port.bytes_to_read() {
+                            Ok(n) => if n > 0 {
+                                let mut buffer = [0u8];
+                                port.read_exact(&mut buffer).unwrap();
+        
+                                let mut stdoutl = io::stdout().lock();
+                                let (ori, str) = match buffer[0] {
+                                    DC1 => (Orientation::Landscape,        "DC1"),
+                                    DC2 => (Orientation::Portrait,         "DC2"),
+                                    DC3 => (Orientation::LandscapeFlipped, "DC3"),
+                                    DC4 => (Orientation::PortraitFlipped,  "DC4"),
+                                    _ => (Orientation::Landscape, "\0")
+                                };
+                                if str != "\0" {
+                                    clr_write!(stdout_t, (Cyan, true), stdoutl, "Received ");
+                                    clr_write!(stdout_t, (Magenta, true), stdoutl, "{str}");
+                                    clr_write!(stdout_t, (Cyan, true), stdoutl, " (");
+                                    clr_write!(stdout_t, (Magenta, true), stdoutl, "{ori:?}");
+                                    clr_write!(stdout_t, (Cyan, true), stdoutl, "), sending ");
+                                    clr_write!(stdout_t, (Magenta, true), stdoutl, "ACK");
+                                    clr_write!(stdout_t, (Cyan, true), stdoutl, "... ");
+                                
+                                    stdoutl.flush().unwrap();
+                                
+                                    if let Err(e) = port.write(&[ACK]) {
+                                        clr_write!(stdout_t, (Red, true), stdoutl, "ERRT: Couldn't write - ");
                                         clr_write!(stdout_t, Red, stdoutl, "{}", e.to_string());
                                     } else {
-                                        clr_write!(stdout_t, Green, stdoutl, "Success");
-                                        if ori as u32 != current_ori {
-                                            clr_write!(stdout_t, (Cyan, true), stdoutl, ", rotating monitor... ");
-                                            rotate_monitor(AUTOROTATE_ID, ori, &mut tray_lock, &mut current_ori);
+                                        if let Err(e) = port.flush() {
+                                            clr_write!(stdout_t, (Red, true), stdoutl, "ERRT: Couldn't flush - ");
+                                            clr_write!(stdout_t, Red, stdoutl, "{}", e.to_string());
                                         } else {
-                                            clr_write!(stdout_t, (Cyan, true), stdoutl, ", monitor already in requested orientation.\n");
+                                            clr_write!(stdout_t, Green, stdoutl, "Success");
+                                            if ori as u32 != current_ori {
+                                                clr_write!(stdout_t, (Cyan, true), stdoutl, ", rotating monitor... ");
+                                                rotate_monitor(AUTOROTATE_ID, ori, &mut tray_lock, &mut current_ori, false);
+                                            } else {
+                                                clr_write!(stdout_t, (Cyan, true), stdoutl, ", monitor already in requested orientation.\n");
+                                            }
                                         }
                                     }
                                 }
+                                //else {clr_write!(stdout_t, (Cyan, true), stdoutl, "Received {}.\n", buffer[0]);}
+                                stdoutl.flush().unwrap();
+                            } /*else {
+                                let mut stdoutl = io::stdout().lock();
+                                writeln!(stdoutl, "{n}");
+                                stdoutl.flush().unwrap();
+                            }*/
+                            Err(e) => {
+                                let mut stdoutl = io::stdout().lock();
+                                clr_write!(stdout_t, (Red, true), stdoutl, "ERRT: Couldn't get bytes to read - ");
+                                clr_write!(stdout_t, Red, stdoutl, "{}\n", e.to_string());
+                                stdoutl.flush().unwrap();
+                                break;
                             }
-                            //else {clr_write!(stdout_t, (Cyan, true), stdoutl, "Received {}.\n", buffer[0]);}
-                            stdoutl.flush().unwrap();
-                        } /*else {
-                            let mut stdoutl = io::stdout().lock();
-                            writeln!(stdoutl, "{n}");
-                            stdoutl.flush().unwrap();
-                        }*/
-                        Err(e) => {
-                            let mut stdoutl = io::stdout().lock();
-                            clr_write!(stdout_t, (Red, true), stdoutl, "ERRT: Couldn't get bytes to read - ");
-                            clr_write!(stdout_t, Red, stdoutl, "{}\n", e.to_string());
-                            stdoutl.flush().unwrap();
-                            break;
                         }
                     }
                 }
@@ -267,7 +272,6 @@ fn main() {
 
     event_loop.run(move |event, _, control_flow| {
         *control_flow = ControlFlow::Wait;
-        let _ = tray_icon;
 
         if let Event::UserEvent(e) = event {
             {
@@ -295,7 +299,7 @@ fn main() {
                                     clr_write!(stdout, (Cyan, true), stdoutl, ": ");
                                     clr_write!(stdout, (Magenta, true), stdoutl, "ACK");
                                     clr_write!(stdout, (Cyan, true), stdoutl, " received.\n");
-                                    let _ = tray_lock.set_menu_item_checkable(Events::SerialAutoRotateMonitor, !oldv);
+                                    _=tray_lock.set_menu_item_checkable(Events::SerialAutoRotateMonitor, !oldv);
                                 } else {
                                     clr_write!(stdout, (Red, true), stdoutl, "ERR: Received non-ACK code \"{:#04x}\".\n", buffer[0]);
                                 }
@@ -312,7 +316,7 @@ fn main() {
                 Events::HideConsole => {
                     let mut tray_lock = tray_icon.lock().unwrap();
                     if let Some(oldv) = tray_lock.get_menu_item_checkable(Events::HideConsole) {
-                        let _ = tray_lock.set_menu_item_checkable(Events::HideConsole, !oldv);
+                        _=tray_lock.set_menu_item_checkable(Events::HideConsole, !oldv);
 
                         if oldv {winconsole::window::show(true);}
                         else    {winconsole::window::hide();}
@@ -329,7 +333,7 @@ fn main() {
                     }
                 }
 
-                Events::SerialRotateMonitor(ori) => rotate_monitor(AUTOROTATE_ID, ori, &mut tray_icon.lock().unwrap(), &mut current_ori),
+                Events::SerialRotateMonitor(ori) => rotate_monitor(AUTOROTATE_ID, ori, &mut tray_icon.lock().unwrap(), &mut current_ori, true),
                 Events::SerialAutoRotateMonitor => {
                     if let Some(ref mut port) = *serial_port.lock().unwrap() {
                         let mut tray_lock = tray_icon.lock().unwrap();
@@ -345,8 +349,25 @@ fn main() {
                                         clr_write!(stdout, (Cyan, true), stdoutl, ": ");
                                         clr_write!(stdout, (Magenta, true), stdoutl, "ACK");
                                         clr_write!(stdout, (Cyan, true), stdoutl, " received.\n");
-                                        let _ = tray_lock.set_menu_item_checkable(Events::SerialAutoRotateMonitor, !oldv);
+                                        _=tray_lock.set_menu_item_checkable(Events::SerialAutoRotateMonitor, !oldv);
+
+                                        for &o in &[Orientation::Landscape, Orientation::Portrait, Orientation::LandscapeFlipped, Orientation::PortraitFlipped] {
+                                            _=tray_lock.set_menu_item_checkable(Events::SerialRotateMonitor(o), (o as u32)==current_ori);
+                                        }
                                     }
+                                    NAK => {
+                                        if oldv {clr_write!(stdout, (Red, true), stdoutl, "ERR: NAK received.\n");} else {
+                                            clr_write!(stdout, Green, stdoutl, "\nSuccess");
+                                            clr_write!(stdout, (Cyan, true), stdoutl, ": ");
+                                            clr_write!(stdout, (Magenta, true), stdoutl, "NAK");
+                                            clr_write!(stdout, (Cyan, true), stdoutl, " received.\n");
+                                            _=tray_lock.set_menu_item_checkable(Events::SerialAutoRotateMonitor, !oldv);
+    
+                                            for &o in &[Orientation::Landscape, Orientation::Portrait, Orientation::LandscapeFlipped, Orientation::PortraitFlipped] {
+                                                _=tray_lock.set_menu_item_checkable(Events::SerialRotateMonitor(o), false);
+                                            }
+                                        }
+                                    } 
                                     ENQ => {
                                         clr_write!(stdout, Green, stdoutl, "\nSuccess");
                                         clr_write!(stdout, (Cyan, true), stdoutl, ": ");
@@ -360,12 +381,15 @@ fn main() {
                                                 clr_write!(stdout, (Cyan, true), stdoutl, ": ");
                                                 clr_write!(stdout, (Magenta, true), stdoutl, "ACK");
                                                 clr_write!(stdout, (Cyan, true), stdoutl, " received.\n");
+                                                _=tray_lock.set_menu_item_checkable(Events::SerialAutoRotateMonitor, !oldv);
+
+                                                for &o in &[Orientation::Landscape, Orientation::Portrait, Orientation::LandscapeFlipped, Orientation::PortraitFlipped] {
+                                                    _=tray_lock.set_menu_item_checkable(Events::SerialRotateMonitor(o), false);
+                                                }
                                             } else {
                                                 clr_write!(stdout, (Red, true), stdoutl, "ERR: Received non-ACK code \"{:#04x}\".\n", buffer[0]);
                                             }
                                         });
-
-                                        _=tray_lock.set_menu_item_checkable(Events::SerialAutoRotateMonitor, !oldv);
                                     }
                                     
                                     _ => {clr_write!(stdout, (Red, true), stdoutl, "ERR: Received non-ACK code \"{:#04x}\".\n", buffer[0]);}
@@ -388,6 +412,53 @@ fn main() {
                     if let Some(ref mut port) = *serial_port.lock().unwrap() {
                         console_to_fg(&mut tray_icon.lock().unwrap());
                         serial_send(port, &[SYN], "SYN", |p: &mut Box<dyn SerialPort>, stdoutl: &mut StdoutLock| {
+                            let mut buffer = [0u8];
+                            p.read_exact(&mut buffer).unwrap();
+    
+                            if buffer[0] == ACK {
+                                clr_write!(stdout, Green, stdoutl, "\nSuccess");
+                                clr_write!(stdout, (Cyan, true), stdoutl, ": ");
+                                clr_write!(stdout, (Magenta, true), stdoutl, "ACK");
+                                clr_write!(stdout, (Cyan, true), stdoutl, " received.\n");
+                            } else {
+                                clr_write!(stdout, (Red, true), stdoutl, "ERR: Received non-ACK code \"{:#04x}\".\n", buffer[0]);
+                            }
+                        });
+                    }
+                }
+                Events::SerialQueryStatus => {
+                    if let Some(ref mut port) = *serial_port.lock().unwrap() {
+                        console_to_fg(&mut tray_icon.lock().unwrap());
+                        serial_send(port, &[SYN], "ENQ", |p: &mut Box<dyn SerialPort>, stdoutl: &mut StdoutLock| {
+                            let mut buffer = [0u8];
+                            p.read_exact(&mut buffer).unwrap();
+    
+                            match buffer[0] {
+                                ACK => {
+                                    clr_write!(stdout, Green, stdoutl, "\nSuccess");
+                                    clr_write!(stdout, (Cyan,    true), stdoutl, ": received ");
+                                    clr_write!(stdout, (Magenta, true), stdoutl, "ACK");
+                                    clr_write!(stdout, (Cyan,    true), stdoutl, " - autorotation is ");
+                                    clr_write!(stdout, Green, stdoutl, "running");
+                                    clr_write!(stdout, (Cyan,    true), stdoutl, ".\n");
+                                }
+                                NAK => {
+                                    clr_write!(stdout, Green, stdoutl, "\nSuccess");
+                                    clr_write!(stdout, (Cyan,    true), stdoutl, ": received ");
+                                    clr_write!(stdout, (Magenta, true), stdoutl, "NAK");
+                                    clr_write!(stdout, (Cyan,    true), stdoutl, " - autorotation is ");
+                                    clr_write!(stdout, (Red,     true), stdoutl, "not running");
+                                    clr_write!(stdout, (Cyan,    true), stdoutl, ".\n");
+                                }
+                                _ => {clr_write!(stdout, (Red, true), stdoutl, "ERR: Received non-ACK code \"{:#04x}\".\n", buffer[0]);}
+                            }
+                        });
+                    }
+                }
+                Events::SerialIMURecalibrate => {
+                    if let Some(ref mut port) = *serial_port.lock().unwrap() {
+                        console_to_fg(&mut tray_icon.lock().unwrap());
+                        serial_send(port, &[SYN], "DC3", |p: &mut Box<dyn SerialPort>, stdoutl: &mut StdoutLock| {
                             let mut buffer = [0u8];
                             p.read_exact(&mut buffer).unwrap();
     
@@ -564,17 +635,17 @@ fn main() {
                 }
                 /*Events::CudaFactorial => {
                     let path = format!(r"{}\src\external\CudaFactorial\x64\Release\CudaFactorial.exe", env!("CARGO_MANIFEST_DIR")); //don't ever do this. ever.
-                    let _ = std::process::Command::new(path).spawn().unwrap();
+                    _=std::process::Command::new(path).spawn().unwrap();
                 }*/
 
-                _ => ()
+                //_ => ()
             }
         }
     });
 }
 
 
-fn rotate_monitor(monitor_id: u32, ori: Orientation, tray_icon: &mut TrayIcon<Events>, current_ori: &mut u32) {
+fn rotate_monitor(monitor_id: u32, ori: Orientation, tray_icon: &mut TrayIcon<Events>, current_ori: &mut u32, manual: bool) {
     unsafe {
         let mut d = DISPLAY_DEVICEA::default();
         d.cb = mem::size_of::<DISPLAY_DEVICEA>() as u32;
@@ -601,8 +672,10 @@ fn rotate_monitor(monitor_id: u32, ori: Orientation, tray_icon: &mut TrayIcon<Ev
                 );
                 let mut stdout = StandardStream::stdout(ColorChoice::Always);
                 if ret == DISP_CHANGE_SUCCESSFUL {
-                    for &o in &[Orientation::Landscape, Orientation::Portrait, Orientation::LandscapeFlipped, Orientation::PortraitFlipped] {
-                        _=tray_icon.set_menu_item_checkable(Events::SerialRotateMonitor(o), o==ori);
+                    if manual {
+                        for &o in &[Orientation::Landscape, Orientation::Portrait, Orientation::LandscapeFlipped, Orientation::PortraitFlipped] {
+                            _=tray_icon.set_menu_item_checkable(Events::SerialRotateMonitor(o), o==ori);
+                        }
                     }
                     let mut stdoutl = io::stdout().lock();
                     clr_write!(stdout, Green, stdoutl, "OK\n");

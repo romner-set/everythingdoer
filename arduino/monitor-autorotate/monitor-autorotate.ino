@@ -49,7 +49,7 @@ void setup() {
 
 float x, y, z, angle;
 void loop() {
-  if (running && IMU.accelerationAvailable()) {
+  if (running==true && IMU.accelerationAvailable()) {
     IMU.readAcceleration(x, y, z);
     angle = deviation(x,y)-offset;
 
@@ -74,7 +74,7 @@ void loop() {
         serial_changeori(DC1+current_ori);
         offset -= 90;
       }
-    } //else {Serial.write(NAK);}
+    }
   }
 
   if (Serial.available() > 0) {
@@ -83,34 +83,46 @@ void loop() {
     //Serial.write(r);
     switch (Serial.read()) {
       case DC1:
-        digitalWrite(PIN_LED, HIGH);
-        Serial.write(ENQ);
-        
-        digitalWrite(LED_RED,   HIGH);
-        digitalWrite(LED_BLUE,   LOW);
-        digitalWrite(LED_GREEN, HIGH);
-        
-        while (Serial.available() < 2) {delay(1);}
-        current_ori = Serial.read();
-        angle_threshold = Serial.read();
-        angle_limit = angle_threshold+90;
-        //Serial.read(); Serial.read();
+        if (running==true) {Serial.write(NAK);} else {
+          digitalWrite(PIN_LED, HIGH);
+          Serial.write(ENQ);
+          
+          digitalWrite(LED_RED,   HIGH);
+          digitalWrite(LED_BLUE,   LOW);
+          digitalWrite(LED_GREEN, HIGH);
+          
+          while (Serial.available() < 2) {delay(1);}
+          current_ori = Serial.read();
+          angle_threshold = Serial.read();
+          angle_limit = angle_threshold+90;
+          //Serial.read(); Serial.read();
 
-        running = true;
-        IMU.begin();
-        
-        digitalWrite(LED_BLUE,  HIGH);
-        Serial.write(ACK);
+          running = true;
+          IMU.begin();
+          
+          digitalWrite(LED_BLUE,  HIGH);
+          Serial.write(ACK);
+        }
         
         break;
       case DC2:
-        digitalWrite(PIN_LED, LOW);
-        running = false;
-        IMU.end();
+        if (running==true) {
+          digitalWrite(PIN_LED, LOW);
+          running = false;
+          IMU.end();
+          Serial.write(ACK);
+        } else {Serial.write(NAK);}
+        break;
+      case DC3:
         Serial.write(ACK);
+        if (running==true) {calibrate_IMU();} else {
+          IMU.begin();
+          calibrate_IMU();
+          IMU.end();
+        }
         break;
       case ENQ:
-        if (running) {Serial.write(ACK);}
+        if (running==true) {Serial.write(ACK);}
         else         {Serial.write(NAK);}
         break;
       case SYN:
