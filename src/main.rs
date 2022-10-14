@@ -6,8 +6,9 @@ use stopwatch::Stopwatch;
 use winit::{event::Event, event_loop::{ControlFlow, EventLoop}};
 use trayicon::{MenuBuilder, TrayIconBuilder, TrayIcon};
 use termcolor::*;
-use windows::{Win32::{Graphics::Gdi::*, Foundation::{BOOL, HWND}}, core::PCSTR};
+use windows::{Win32::{Graphics::Gdi::*, Foundation::{BOOL, HWND}, UI::WindowsAndMessaging::*}, core::PCSTR};
 
+/* #region MACROS */
 
 static mut COLOR: ColorSpec = unsafe {const_zero::const_zero!(ColorSpec)};
 macro_rules! color { // !NOT! thread safe. This is on purpose — color!() should only be used when a lock on io::stdout() is acquired.
@@ -35,6 +36,9 @@ macro_rules! clr_write {
     };
 }
 
+/* #endregion */
+
+/* #region ENUMS */
 
 #[derive(Clone, Copy, Eq, PartialEq, Debug)]
 #[repr(u8)]
@@ -58,6 +62,10 @@ enum Events {
     Exit//, None
 }
 
+/* #endregion */
+
+/* #region CONSTANTS */
+
 const FACTORIAL_THREAD_COUNT: u64 = 32;
 const SERIAL_DEFAULT_NAME: &'static str = "COM4";
 const SERIAL_BAUD_RATE: u32 = 9600;
@@ -74,7 +82,10 @@ const DC2: u8 = 0x12;
 const DC3: u8 = 0x13;
 const DC4: u8 = 0x14;
 
+/* #endregion */
+
 fn main() {
+    /* #region STARTUP */
     let mut stdout = StandardStream::stdout(ColorChoice::Always);
     unsafe {COLOR = ColorSpec::new();}
 
@@ -95,7 +106,9 @@ fn main() {
 
     let serial_port = Arc::new(Mutex::new(None));
     let mut current_ori;
+    /* #endregion */
 
+    /* #region TASKBAR MENU SETUP */
     macro_rules! menu {
         () => {MenuBuilder::new()
             /*.with(MenuItem::Item {
@@ -190,11 +203,12 @@ fn main() {
         .on_click(Events::HideConsole)
         .on_double_click(Events::RefreshMenu)
         .menu(menu!()).build().unwrap()));
+    /* #endregion */
 
+    /* #region SERIAL LISTENER THREAD */
     let serial_port_t = Arc::clone(&serial_port);
     let tray_icon_t = Arc::clone(&tray_icon);
     let mut stdout_t = StandardStream::stdout(ColorChoice::Always);
-    //let proxy_t = event_loop.create_proxy();
     thread::spawn(move || loop {
         {
             let mut tray_lock = tray_icon_t.lock().unwrap();
@@ -269,7 +283,27 @@ fn main() {
         }
         thread::sleep(Duration::from_millis(10));
     });
+    /* #endregion */
+    
+    /* #region NEW WINDOW HANDLER */
+    /*unsafe {
+        extern "system" fn hookproc() {0}
+        let hhook = SetWindowsHookExA(WINDOWS_HOOK_ID(10), Some(hookproc), 0, );
+    }*/
+    /* #endregion */
 
+    /* #region STARTUP EVENTS THREAD */
+    let proxy_t = event_loop.create_proxy();
+    thread::spawn(move || {
+        thread::sleep(Duration::from_secs(1));
+        if proxy_t.send_event(Events::SerialAutoRotateMonitor).is_ok() {
+            thread::sleep(Duration::from_secs(1));
+            _=proxy_t.send_event(Events::HideConsole);
+        }
+    });
+    /* #endregion */
+    
+    //MAIN LOOP
     event_loop.run(move |event, _, control_flow| {
         *control_flow = ControlFlow::Wait;
 
@@ -285,6 +319,7 @@ fn main() {
             match e {
                 Events::Exit => {
                     let mut stdoutl = io::stdout().lock();
+                    let mut stdout = StandardStream::stdout(ColorChoice::Always);
                     
                     if let Some(ref mut port) = *serial_port.lock().unwrap() {
                         let mut tray_lock = tray_icon.lock().unwrap();
@@ -293,7 +328,7 @@ fn main() {
                             serial_send(port, &[DC2], "DC2", |p: &mut Box<dyn SerialPort>, stdoutl: &mut StdoutLock| {
                                 let mut buffer = [0u8];
                                 p.read_exact(&mut buffer).unwrap();
-        
+            
                                 if buffer[0] == ACK {
                                     clr_write!(stdout, Green, stdoutl, "\nSuccess");
                                     clr_write!(stdout, (Cyan, true), stdoutl, ": ");
@@ -309,9 +344,9 @@ fn main() {
                     clr_write!(stdout, (Magenta, true), stdoutl, "<——————————————————————————————————————————————————————————————————————————————————————>");
                     stdoutl.flush().unwrap();
                     _=stdout.reset();
-
+            
                     console_to_fg(&mut tray_icon.lock().unwrap());
-                    *control_flow = ControlFlow::Exit
+                    *control_flow = ControlFlow::Exit;
                 }
                 Events::HideConsole => {
                     let mut tray_lock = tray_icon.lock().unwrap();
@@ -747,7 +782,7 @@ fn console_to_fg(tray_icon: &mut TrayIcon<Events>) -> bool {
     hidden_before
 }
 
-fn input<T, F>(mut condition: F) -> T where F: FnMut(&str) -> Option<T> { //TODO: update printing
+fn input<T, F>(mut condition: F) -> T where F: FnMut(&str) -> Option<T> {
     let mut stdout = StandardStream::stdout(ColorChoice::Always);
     loop {
         let mut buffer = String::new();
